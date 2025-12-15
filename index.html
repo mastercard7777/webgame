@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>운빨 존망 디펜스 - GitHub Edition</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Do+Hyeon&display=swap');
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { margin: 0; padding: 0; background-color: #000; color: white; font-family: 'Do Hyeon', sans-serif; overflow: hidden; touch-action: none; width: 100vw; height: 100vh; }
+        #app { position: relative; width: 100%; height: 100%; background: #121212; display: flex; flex-direction: column; }
+        .screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; flex-direction: column; background: #121212; z-index: 10; }
+        .screen.active { display: flex; }
+        #game-screen { position: relative; width: 100%; height: 100%; background: #1a1a2e; }
+        canvas { display: block; width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 1; }
+        #game-ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; display: flex; flex-direction: column; justify-content: space-between; }
+        .game-top-bar { padding: 10px 15px; background: rgba(0,0,0,0.6); display: flex; justify-content: space-between; align-items: center; font-size: 18px; }
+        .time-bar-container { position: absolute; top: 40px; left: 0; width: 100%; height: 6px; background: rgba(255,255,255,0.2); }
+        .time-bar-fill { height: 100%; background: #00f2fe; width: 100%; }
+        .game-footer { padding: 10px; background: rgba(0,0,0,0.8); pointer-events: auto; border-top: 1px solid #444; display: flex; flex-direction: column; gap: 8px; }
+        .header { height: 50px; background: #1f1f1f; display: flex; justify-content: space-between; align-items: center; padding: 0 15px; border-bottom: 2px solid #333; }
+        #tab-bar { height: 60px; background: #1a1a1a; display: flex; justify-content: space-around; align-items: center; border-top: 1px solid #333; z-index: 100; }
+        .tab-item { flex: 1; text-align: center; color: #666; cursor: pointer; font-size: 11px; }
+        .tab-item.active { color: #00f2fe; }
+        .locked-tab { opacity: 0.3; pointer-events: none; }
+        .btn { background: #00f2fe; border: none; border-radius: 8px; color: #000; font-family: 'Black Han Sans'; padding: 10px; font-size: 16px; cursor: pointer; }
+        .skill-bar { display: flex; justify-content: center; gap: 10px; }
+        .skill-btn { width: 45px; height: 45px; border-radius: 8px; border: 1px solid #555; background: #222; color: #fff; font-size: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+        .skill-btn.cooldown { opacity: 0.4; }
+        .control-row { display: flex; justify-content: space-between; align-items: center; }
+        .speed-btn { background: #333; color: #fff; border: none; padding: 5px 10px; border-radius: 10px; font-size: 12px; }
+        .speed-btn.active { background: #ffcc00; color: #000; }
+        .content-scroll { flex: 1; overflow-y: auto; padding: 15px; }
+        .stage-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+        .stage-btn { aspect-ratio: 1; background: #333; border-radius: 8px; display: flex; justify-content: center; align-items: center; font-size: 14px; color: #888; }
+        .stage-btn.unlocked { color: #fff; border: 1px solid #00f2fe; }
+        .stage-btn.cleared { color: #00ff00; border: 1px solid #00ff00; }
+        .shop-item { background: #222; border-radius: 10px; padding: 10px; margin-bottom: 8px; display: flex; align-items: center; }
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 200; display: none; justify-content: center; align-items: center; }
+        .modal-content { background: #222; padding: 20px; border-radius: 15px; text-align: center; border: 1px solid #555; }
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <div id="start-screen" class="screen active" style="justify-content: center; align-items: center;">
+        <h1 style="color: #00f2fe; font-size: 35px;">운빨 존망 디펜스</h1>
+        <button class="btn" onclick="GameApp.changeState('LOBBY')" style="width: 200px;">게임 시작</button>
+    </div>
+
+    <div id="lobby-screen" class="screen">
+        <div class="header"><span>스테이지</span><span id="lobby-coin">💰 0</span></div>
+        <div class="content-scroll" id="stage-list-container"></div>
+    </div>
+
+    <div id="shop-screen" class="screen">
+        <div class="header"><span>상점</span><span id="shop-coin">💰 0</span></div>
+        <div class="content-scroll" id="shop-container"></div>
+    </div>
+
+    <div id="deck-screen" class="screen">
+        <div class="header"><span>스킬 설정</span></div>
+        <div class="content-scroll" id="deck-container"></div>
+    </div>
+
+    <div id="game-screen" class="screen">
+        <canvas id="gameCanvas"></canvas>
+        <div id="game-ui">
+            <div>
+                <div class="game-top-bar"><span id="game-stage-txt">1-1</span><span id="game-life-txt">❤️ 3</span></div>
+                <div class="time-bar-container"><div class="time-bar-fill" id="time-bar"></div></div>
+            </div>
+            <div class="game-footer">
+                <div class="skill-bar" id="ingame-skill-bar"></div>
+                <div class="control-row">
+                    <span>SP: <b id="game-sp-txt" style="color:#00f2fe">0</b></span>
+                    <div>
+                        <button class="speed-btn active" onclick="Game.setSpeed(1, this)">x1</button>
+                        <button class="speed-btn" onclick="Game.setSpeed(2, this)">x2</button>
+                    </div>
+                </div>
+                <button class="btn" id="spawn-btn" onclick="Game.spawnDice()">주사위 소환 (10 SP)</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="tab-bar">
+        <div class="tab-item active" onclick="GameApp.changeState('LOBBY')">전투</div>
+        <div class="tab-item locked-tab" id="tab-shop" onclick="GameApp.changeState('SHOP')">상점</div>
+        <div class="tab-item locked-tab" id="tab-deck" onclick="GameApp.changeState('DECK')">스킬</div>
+    </div>
+</div>
+
+<div id="result-modal" class="modal">
+    <div class="modal-content"><h2 id="result-title"></h2><p id="result-msg"></p><button class="btn" onclick="Game.quitGame()">확인</button></div>
+</div>
+
+<script>
+/** V7.0 정식 웹 서버 환경용 코드 **/
+const DATA = {
+    stages: [6, 10, 10, 14, 14],
+    dice: { fire: '#ff4b2b', ice: '#00f2fe', poison: '#38ef7d', sniper: '#d53369' },
+    skills: {
+        arrow: { id: 'arrow', name: '화살비', cost: 50, sp: 30, icon: '🏹' },
+        lightning: { id: 'lightning', name: '낙뢰', cost: 150, sp: 50, icon: '⚡' },
+        bombing: { id: 'bombing', name: '폭격', cost: 300, sp: 80, icon: '✈️' },
+        nuke: { id: 'nuke', name: '핵', cost: 700, sp: 150, icon: '☢️' }
+    }
+};
+
+let player = { coins: 100, progress: { w: 1, s: 0 }, diceLv: {fire:1,ice:1,poison:1,sniper:1}, ownedSkills: [], equippedSkills: [null,null,null] };
+
+const GameApp = {
+    init() { this.renderLobby(); this.checkUnlocks(); Game.setup(); },
+    changeState(s) {
+        document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
+        document.getElementById('tab-bar').style.display = 'flex';
+        if (s === 'LOBBY') { document.getElementById('lobby-screen').classList.add('active'); this.renderLobby(); }
+        else if (s === 'SHOP') { document.getElementById('shop-screen').classList.add('active'); this.renderShop(); }
+        else if (s === 'DECK') { document.getElementById('deck-screen').classList.add('active'); this.renderDeck(); }
+        else if (s === 'GAME') { document.getElementById('game-screen').classList.add('active'); document.getElementById('tab-bar').style.display = 'none'; }
+        this.checkUnlocks();
+    },
+    isCleared(w, s) { return player.progress.w > w || (player.progress.w == w && player.progress.s >= s); },
+    checkUnlocks() {
+        if(this.isCleared(1,6)) document.getElementById('tab-shop').classList.remove('locked-tab');
+        if(this.isCleared(1,4)) document.getElementById('tab-deck').classList.remove('locked-tab');
+        document.getElementById('lobby-coin').innerText = "💰 " + player.coins;
+    },
+    renderLobby() {
+        const c = document.getElementById('stage-list-container'); c.innerHTML = '';
+        DATA.stages.forEach((max, i) => {
+            const w = i + 1; const grid = document.createElement('div'); grid.className = 'stage-grid';
+            c.innerHTML += `<div style="margin:10px 0;">WORLD ${w}</div>`;
+            for(let s=1; s<=max; s++) {
+                const b = document.createElement('div'); b.className = 'stage-btn'; b.innerText = `${w}-${s}`;
+                if(this.isCleared(w, s)) b.classList.add('cleared');
+                else if(this.isCleared(w, s-1) || (w>1 && s===1 && this.isCleared(w-1, DATA.stages[w-2]))) {
+                    b.classList.add('unlocked'); b.onclick = () => Game.start(w, s);
+                }
+                grid.appendChild(b);
+            }
+            c.appendChild(grid);
+        });
+    },
+    renderShop() {
+        const c = document.getElementById('shop-container'); c.innerHTML = '🎲 주사위 강화<br>';
+        Object.keys(DATA.dice).forEach(k => {
+            c.innerHTML += `<div class="shop-item">Lv.${player.diceLv[k]} ${k}<button class="btn" style="margin-left:auto" onclick="GameApp.buyDice('${k}')">강화(500)</button></div>`;
+        });
+    },
+    buyDice(k) { if(player.coins>=500){player.coins-=500; player.diceLv[k]++; this.renderShop();} },
+    renderDeck() {} // 간략화
+};
+
+const Game = {
+    setup() {
+        this.cvs = document.getElementById('gameCanvas'); this.ctx = this.cvs.getContext('2d');
+        window.addEventListener('resize', () => this.resize());
+        this.cvs.addEventListener('click', (e) => this.click(e));
+    },
+    resize() { this.cvs.width = window.innerWidth; this.cvs.height = window.innerHeight; this.w = this.cvs.width; this.h = this.cvs.height; },
+    start(w, s) {
+        GameApp.changeState('GAME'); this.resize();
+        this.st = { w, s, sp:0, cost:10, hp:3, time:90, f:0, speed:1 };
+        this.ents = { grid: Array(4).fill().map(()=>Array(4).fill(null)), enemies:[], bullets:[] };
+        this.loop();
+    },
+    spawnDice() {
+        if(this.st.sp < this.st.cost) return;
+        let empty = []; for(let r=0;r<4;r++) for(let c=0;c<4;c++) if(!this.ents.grid[r][c]) empty.push({r,c});
+        if(!empty.length) return;
+        this.st.sp -= this.st.cost; this.st.cost += 10;
+        const p = empty[Math.floor(Math.random()*empty.length)];
+        const types = Object.keys(DATA.dice);
+        this.ents.grid[p.r][p.c] = { r:p.r, c:p.c, t: types[Math.floor(Math.random()*types.length)], lv:1, cd:0 };
+        this.updateUI();
+    },
+    click(e) { /* 머지 생략 */ },
+    updateUI() {
+        document.getElementById('game-sp-txt').innerText = Math.floor(this.st.sp);
+        document.getElementById('spawn-btn').innerText = `주사위 소환 (${this.st.cost} SP)`;
+        document.getElementById('time-bar').style.width = (this.st.time/90)*100 + "%";
+    },
+    loop() {
+        if(GameApp.state !== 'GAME') return;
+        this.st.f++; if(this.st.f%60===0){ this.st.time--; if(this.st.time<=0) this.end(true); this.updateUI(); }
+        if(this.st.f%30===0){ this.st.sp+=2; this.updateUI(); }
+        if(this.st.f%100===0) this.ents.enemies.push({ x:this.w*0.1, y:0, hp:50+this.st.w*20, m:50+this.st.w*20 });
+
+        this.ctx.fillStyle = '#1a1a2e'; this.ctx.fillRect(0,0,this.w,this.h);
+        
+        // 적 업데이트 및 그리기
+        this.ents.enemies.forEach((e, i) => {
+            e.y += 2 * this.st.speed;
+            this.ctx.fillStyle = 'red'; this.ctx.beginPath(); this.ctx.arc(e.x, e.y, 10, 0, 7); this.ctx.fill();
+            if(e.y > this.h){ this.ents.enemies.splice(i,1); this.st.hp--; if(this.st.hp<=0) this.end(false); }
+        });
+
+        // 주사위 그리기
+        const sz = Math.min(this.w, this.h)/5;
+        this.ents.grid.forEach(row => row.forEach(d => {
+            if(!d) return;
+            const x = (this.w-sz*4)/2 + d.c*sz + sz/2;
+            const y = (this.h-sz*4)/2 + d.r*sz + sz/2;
+            this.ctx.fillStyle = DATA.dice[d.t]; this.ctx.fillRect(x-sz*0.4, y-sz*0.4, sz*0.8, sz*0.8);
+            // 자동 공격
+            if(d.cd-- <= 0 && this.ents.enemies.length) {
+                this.ents.enemies[0].hp -= 10; if(this.ents.enemies[0].hp<=0) this.ents.enemies.shift();
+                d.cd = 60;
+            }
+        }));
+
+        requestAnimationFrame(() => this.loop());
+    },
+    end(win) { GameApp.changeState('LOBBY'); alert(win?"클리어!":"게임오버"); if(win) {player.progress.s++; player.coins+=100;} },
+    quitGame() { GameApp.changeState('LOBBY'); }
+};
+
+GameApp.init();
+</script>
+</body>
+</html>
