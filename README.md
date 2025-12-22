@@ -1,4 +1,6 @@
 # webgame
 
-# An - Hae
-The link is [~~here~~](https://mastercard7777.github.io/webgame/)
+# DS Edited-Modes
+ [DSjumpking-clean edition](https://mastercard7777.github.io/DSjumpking-clean/)
+[DSemojigame-difficult edition](https://mastercard7777.github.io/DSemojigame-hard/)
+[DSdodge-easy edition](https://mastercard7777.github.io/DSdodge-easy)
